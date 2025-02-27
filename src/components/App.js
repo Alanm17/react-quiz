@@ -11,7 +11,7 @@ const initialState = {
   index: 0,
   answer: null,
 };
-
+console.log(initialState.questions);
 function reducer(state, action) {
   switch (action.type) {
     case "dataReceived":
