@@ -10,94 +10,79 @@ import Progress from "./Progress";
 import FinishedStage from "./FinishedStage";
 import Footer from "./Footer";
 import Timer from "./Timer";
+import questionsData from "./questions.json";
+
 const SecondsPerQuestion = 30;
+
 const initialState = {
-  questions: [],
-  status: "loading",
+  questions: questionsData, // ✅ Use imported data directly
+  status: "ready",
   index: 0,
   answer: null,
   points: 0,
   highScore: 0,
-  secondsRemaining: null,
+  secondsRemaining: SecondsPerQuestion * questionsData.length, // ✅ Dynamically calculated
 };
 
 function reducer(state, action) {
   switch (action.type) {
-    case "dataReceived":
-      return { ...state, questions: action.payload, status: "ready" };
-    case "dataFailed":
-      return { ...state, status: "error" };
     case "start":
-      return {
-        ...state,
-        status: "active",
-        secondsRemaining: SecondsPerQuestion * state.questions.length,
-      };
+      return { ...state, status: "active" };
     case "newAnswer":
-      const question = state.questions[state.index];
+      if (!state.questions.length) return state; // If no questions, return state
+
+      const question = state.questions[state.index] ?? {}; // Ensure it's always an object
+
       return {
         ...state,
         answer: action.payload,
         points:
           action.payload === question.correctOption
-            ? state.points + question.points
+            ? state.points + (question.points ?? 0)
             : state.points,
       };
-    case "next":
-      const nextIndex = state.index + 1;
 
+    case "next":
       return {
         ...state,
-        index: nextIndex < state.questions.length ? nextIndex : state.index,
+        index: state.index + 1,
         answer: null,
       };
     case "finish":
       return {
         ...state,
         status: "finished",
-        highScore:
-          state.points > state.highScore ? state.points : state.highScore,
+        highScore: Math.max(state.points, state.highScore),
       };
     case "restart":
-      return {
-        ...state,
-        status: "ready",
-        index: 0,
-        answer: null,
-        points: 0,
-      };
-
+      return { ...initialState, highScore: state.highScore };
     case "tick":
       return {
         ...state,
-        secondsRemaining: state.secondsRemaining - 1,
-        status: state.secondsRemaining === 0 ? "finished" : state.status,
+        secondsRemaining: Math.max(0, state.secondsRemaining - 1),
+        status: state.secondsRemaining <= 1 ? "finished" : state.status,
       };
     default:
-      throw new Error("action is unkown");
+      throw new Error("Unknown action");
   }
 }
+
 export default function App() {
   const [
     { questions, status, index, answer, points, highScore, secondsRemaining },
     dispatch,
   ] = useReducer(reducer, initialState);
-  const numQuestions = Array.isArray(questions) ? questions.length : 0;
-  useEffect(function () {
-    fetch("http://localhost:8000/questions")
-      .then((res) => res.json())
-      .then((data) => dispatch({ type: "dataReceived", payload: data }))
-      .catch((err) => dispatch({ type: "dataFailed", payload: err }));
-  }, []);
-  const isLastQuestion = index >= questions.length - 1;
-  const maxPoints = questions.reduce((acc, curr) => acc + curr.points, 0);
+
+  const numQuestions = questions.length;
+  const isLastQuestion = index >= numQuestions - 1;
+  const maxPoints = Array.isArray(questions)
+    ? questions.reduce((acc, curr) => acc + (curr.points || 0), 0)
+    : 0;
 
   return (
     <div className="app">
       <Header />
       <Main>
-        {status === "loading" && <Loader />}
-        {status === "error" && <Error />}
         {status === "ready" && (
           <StartScreen numQuestions={numQuestions} dispatch={dispatch} />
         )}
@@ -110,22 +95,27 @@ export default function App() {
               maxPoints={maxPoints}
               answer={answer}
             />
-            <Question
-              questions={questions[index]}
-              dispatch={dispatch}
-              answer={answer}
-            />
+            {questions[index] ? ( // ✅ Check if question exists before rendering
+              <Question
+                questions={questions[index]}
+                dispatch={dispatch}
+                answer={answer}
+              />
+            ) : (
+              <Error message="Question not found!" />
+            )}
             <Footer>
               <Timer dispatch={dispatch} secondsRemaining={secondsRemaining} />
               <NextButton
                 dispatch={dispatch}
                 isLastQuestion={isLastQuestion}
-                numQuestions={numQuestions}
                 index={index}
+                numQuestions={numQuestions}
               />
             </Footer>
           </>
         )}
+
         {status === "finished" && (
           <FinishedStage
             points={points}
